@@ -163,35 +163,79 @@ Avec une validation croisée **5-fold**, on divise les **10 000 tweets** en **5 
 🚀 **Dans notre cas, nous avons choisi la répartition 66% / 33%** pour garantir un modèle qui **s’améliore dans le temps** et suit les évolutions du langage sur Twitter.
 
 
-<!-- 
+## **Explication du fichier `load_data.py`**
 
-## **Résumé de la réflexion**  (02/02/2025)
-🔹 Nous avons récupéré **~80 000 tweets** (Twitter + Reddit).  
-🔹 Nous utilisons **40 000 tweets** pour la première phase de tests.  
-🔹 Nous devons **nettoyer les données** (supprimer les mots inutiles, emojis, etc.).  
-🔹 La division des données permet de **mieux entraîner et tester** le modèle.  
-🔹 Nous avons choisi **66% pour l’entraînement** et **33% pour le réentraînement** futur.  
-<!-- 🔹 L’objectif final est d’avoir une IA **précise**, **généralisable** et **capable d’évoluer avec le temps**.   -->
+Le fichier `load_data.py` est responsable du **chargement, du nettoyage et de l'insertion des tweets dans la base de données MySQL**. Avant d'entraîner notre modèle, nous devons nous assurer que les données sont correctement structurées et prêtes à être exploitées.
 
------
-## **Comment diviser les données ?**  
+### **📌 Étapes réalisées dans `load_data.py` :**
 
-Pour entraîner et tester notre modèle, nous devons diviser notre dataset en **plusieurs ensembles** :  
-🔹 **Données d’entraînement (Training set)** : utilisées pour apprendre.  
-🔹 **Données de test (Test set)** : utilisées pour évaluer le modèle.  
-🔹 **Données pour le réentraînement** : utilisées plus tard pour améliorer le modèle.  
+1️⃣ **Chargement des données brutes** 🔄
+- Le fichier CSV `Twitter_Data.csv`, situé dans le dossier `dataset/`, est chargé avec **Pandas** (l'outil qui facilite la manipulation des données... contrairement à JavaScript qui préfère les transformer en chaos 🤡 t'es pas d'accord ? 
+
+```js
+  console.log('5' + 5); // Résultat : '55' 😵‍💫
+  console.log('5' - 5); // Résultat : 0 🤯
+  ```
+bref..).
+
+2️⃣ **Nettoyage des données** 🧹
+- Suppression des lignes contenant des valeurs `NaN`.
+- Conversion des colonnes catégoriques :
+  - La colonne `category` contient une valeur unique (-1 pour négatif, 0 pour neutre, 1 pour positif).
+  - La base de données MySQL a **deux colonnes distinctes** (`positive` et `negative`), donc nous devons transformer `category` en ce format binaire.
+
+3️⃣ **Séparation des données en deux ensembles** 📊
+- **66% des données** sont insérées immédiatement dans la base MySQL pour entraîner le modèle.
+- **33% des données** sont mises de côté dans `dataset/retrain_tweets.csv` pour améliorer le modèle plus tard.
+
+4️⃣ **Insertion dans MySQL** 🗄️
+- Connexion à la base de données.
+- Insertion des données nettoyées dans la table `tweets`.
+- Enregistrement des données restantes pour un réentraînement futur.
+
+📌 **Visualisation du traitement des données :**
+![Résultat du script `load_data.py`](/assets/output_load_data.png)
+
+
+## **Optimisation de la base de données** 🚀
+
+Pour accélérer les recherches et optimiser l'accès aux données, nous avons **ajouté des index** dans notre modèle et dans le script de migration SQL (`init.sql`).
+
+📌 **Améliorations apportées :**
+- **Indexation de la colonne `text`** 📜 pour accélérer les recherches textuelles.
+- **Indexation des colonnes `positive` et `negative`** ✅❌ pour optimiser les requêtes filtrant les sentiments.
+
+Ces optimisations permettent à l'API d'être **plus rapide et plus efficace** lors de l'analyse des sentiments.
+
+
+## **Relation entre le script d'entraînement et l'API Flask** 🔄
+
+Nous avons identifié une relation directe entre le **script d'entraînement** (`train_initial_model.py`) et l'**endpoint `/analyze`** de l'API Flask.
+
+### 📌 **Le script d'entraînement (`train_initial_model.py`) :**
+- 📥 **Charge les tweets annotés** depuis MySQL.
+- 🎯 **Entraîne un modèle de régression logistique** pour classer les tweets en positifs et négatifs.
+- 💾 **Sauvegarde le modèle et le vectorizer** pour être utilisé plus tard par l'API.
+
+### 📌 **L'endpoint `/analyze` dans Flask :**
+- 📂 **Charge le modèle pré-entraîné** depuis les fichiers sauvegardés.
+- 🔢 **Transforme les tweets en vecteurs numériques** avec `vectorizer`.
+- 🔍 **Effectue une prédiction** du sentiment pour chaque tweet.
+- 📤 **Retourne les résultats au format JSON**.
+
+Grâce à cette architecture, nous pouvons **analyser des tweets en temps réel** avec un modèle mis à jour régulièrement.
 
 ---
 
----
+## **Amélioration du schéma de la base de données** 🛠️
 
+Afin d'éviter des pertes de données et d'améliorer la visibilité, nous avons **modifié le schéma de la base de données** :
 
-🔹 **Si on veut un modèle classique → 70/30**  
-🔹 **Si on a beaucoup de données → 80/20**  
-🔹 **Si on veut un modèle très précis → 90/10**  
-🔹 **Si on veut réentraîner régulièrement → 66/33**  
-🔹 **Si on a un petit dataset → Validation croisée**  
- -->
+✅ **Ajout d'une table `data_log`** pour stocker toutes les entrées et sorties du modèle.  
+✅ **Ajout d'une gestion des transactions** pour permettre un **rollback** en cas d'erreur lors d'un entraînement.
+✅ **Meilleure gestion des logs** pour tracer **quand** et **comment** les données ont été utilisées.
 
-prochaine etape reflechire a comment integre tous ca techniqument
----
+Grâce à ces améliorations, notre base de données devient **plus robuste**, ce qui permet de garantir un suivi des modifications et une meilleure fiabilité du modèle.
+
+🚀 **Prochaines étapes : Intégration d'un monitoring pour suivre les performances du modèle !** 📊
+
