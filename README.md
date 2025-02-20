@@ -55,12 +55,18 @@ Cela va :
 
 ### 4️⃣ Lancer l'application Flask
 
+Avant d'exécuter l'application, Flask doit savoir quel fichier contient l'instance de l'application. Pour cela, on définit la variable d'environnement `FLASK_APP`
+
+Avant de démarrer l'application, il est essentiel de s'assurer que la structure de la base de données est bien en place. Flask-Migrate est utilisé pour gérer les migrations de base de données
+
+Une fois que la base de données est prête, on peut exécuter l'application Flask
+
 Lancez l'application Flask avec les commandes suivantes :
 
 ```bash
 export FLASK_APP=app # on linux
 $env:FLASK_APP="app" # on windows (beurk)
-flask db upgrade
+flask db migrate
 flask run
 ```
 
