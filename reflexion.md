@@ -237,5 +237,93 @@ Afin d'éviter des pertes de données et d'améliorer la visibilité, nous avons
 
 Grâce à ces améliorations, notre base de données devient **plus robuste**, ce qui permet de garantir un suivi des modifications et une meilleure fiabilité du modèle.
 
-🚀 **Prochaines étapes : Intégration d'un monitoring pour suivre les performances du modèle !** 📊
+## Explication du script `train_model.py`
+
+### **🚀 Objectif du script**
+Le script `train_model.py` est conçu pour **entraîner un modèle de machine learning** capable d'analyser le sentiment des tweets enregistrés en base de données. Cependant, étant donné la grande quantité de données (~120K tweets), **il est optimisé pour fonctionner par petits lots (batches)** afin de **préserver la mémoire et éviter le crash de la machine (c'est ce qui m'est arrivé )**.
+
+### **🔧 Fonctionnalités principales**
+✅ Chargement des données depuis MySQL **par petits paquets (batch processing)**
+✅ Nettoyage des tweets **au fur et à mesure** (pas de chargement massif en mémoire)
+✅ Vectorisation des tweets avec **TF-IDF** sur chaque batch
+✅ Entraînement du modèle par **mini-batchs** pour limiter l’utilisation de RAM
+✅ Reprise automatique en cas d’arrêt (enregistre le dernier tweet traité)
+✅ Sauvegarde des modèles entraînés pour les réutiliser plus tard
+
+
+### **📂 Étapes détaillées du script**
+
+#### **1️⃣ Chargement des tweets en petits paquets (batch processing)**
+Plutôt que de charger **120K tweets d'un coup**, le script :
+- Récupère **un petit lot de tweets (ex: 5000)** à la fois depuis MySQL.
+- Utilise l’ID ou la date du dernier tweet traité pour reprendre là où il s'était arrêté.
+
+#### **2️⃣ Nettoyage et vectorisation des données à la volée**
+Chaque lot de tweets est immédiatement :
+- Nettoyé (**passé en minuscules, suppression des espaces, etc.**)
+- Converti en vecteurs numériques avec **TF-IDF** (**max_features=2000** pour limiter la mémoire)
+- Préparé pour l’entraînement **sans être stocké en mémoire**
+
+#### **3️⃣ Entraînement du modèle avec mini-batchs**
+- Chaque batch de tweets est traité **indépendamment**
+- L’entraînement se fait **progressivement** avec `warm_start=True`
+- Utilisation de `solver='saga'` pour permettre un **entraînement en mini-batchs**
+
+#### **4️⃣ Reprise automatique après arrêt**
+- Le script enregistre le **dernier tweet traité** dans un fichier `last_processed.txt`
+- Si le script est interrompu, il reprend à partir du dernier tweet sans recommencer depuis le début
+
+#### **5️⃣ Sauvegarde des modèles après chaque batch**
+- Les modèles sont enregistrés **après chaque lot traité** pour éviter toute perte
+- Sauvegarde dans `models/logistic_regression_positive.pkl` et `models/logistic_regression_negative.pkl`
+
+---
+
+### **🔄 Optimisation : Mini-batchs et gestion de la mémoire**
+
+| 🔧 Problème | 🚀 Solution |
+|------------|------------|
+| **Trop de tweets chargés en mémoire** | Chargement en **batches de 5000 tweets** |
+| **Vectorisation trop lourde** | Réduction des features **(max_features=2000)** |
+| **CPU surchargé** | Mini-batchs avec `solver='saga'` et `n_jobs=1` |
+| **RAM saturée** | Entraînement **progressif avec warm_start=True** |
+| **Script qui redémarre de zéro** | Reprise **depuis le dernier tweet traité** |
+
+---
+
+### **📌 Exécution du script**
+
+### **💡 Avant de lancer l'entraînement**
+1. Vérifier si des données existent en base de données :
+   ```sql
+   SELECT COUNT(*) FROM tweet;
+   ```
+   Si `0`, exécuter d'abord `load_data.py` pour ajouter des tweets.
+
+2. Modifier la taille du batch (optionnel) :
+   Dans le script, changer cette ligne :
+   ```python
+   BATCH_SIZE = 5000  # Augmenter ou réduire selon les performances
+   ```
+
+### **🚀 Lancer l'entraînement du modèle**
+```bash
+python3 train_model.py
+```
+
+### **📊 Vérifier les modèles sauvegardés**
+Après l'entraînement, vérifier que les fichiers sont bien créés :
+```bash
+ls models/
+```
+Devrait afficher :
+```
+logistic_regression_positive.pkl
+logistic_regression_negative.pkl
+```
+matrice de confusion  positive
+![Matrix de confusion positive `load_data.py`](/outputs/confusion_matrix_positive_20250221.png)
+
+matrix de confusion negative:
+![Matrix de confusion positive `load_data.py`](/outputs/confusion_matrix_negative_20250221.png)
 
