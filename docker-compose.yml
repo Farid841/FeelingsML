@@ -1,32 +1,58 @@
-version: '3.8'
+version: "3.8"
 
 services:
   db:
     image: mysql:8.0
-    container_name: mysql_db
+    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: sentiment_analysis
       MYSQL_USER: user
       MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: rootpassword
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  web:
-    build: ./app
-    container_name: flask_app
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     ports:
-      - "5000:5000"
-    environment:
-      FLASK_ENV: development
-      DATABASE_URI: mysql+mysqlconnector://user:password@db:3306/sentiment_analysis
+      - "5050:5000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    environment:
+      - SQLALCHEMY_DATABASE_URI=mysql+mysqlconnector://user:password@db:3306/sentiment_analysis
     volumes:
-      - ./app:/app
-    command: ["./entrypoint.sh"]
+      - .:/app
+    restart: always
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    command:
+      [
+        "sh",
+        "-c",
+        "while true; do sleep 604800; /bin/sh /app/train_model.cron.sh; done",
+      ]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - SQLALCHEMY_DATABASE_URI=mysql+mysqlconnector://user:password@db:3306/sentiment_analysis
+    volumes:
+      - .:/app
+    restart: always
 
 volumes:
   mysql_data:
