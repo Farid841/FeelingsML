@@ -1,6 +1,13 @@
 #!/bin/bash
 
-echo "Début du réentraînement du modèle..."
-source ./.venv/bin/activate  # Active l'environnement virtuel pour linux (à adapter pour Windows)
-python ./train_model.py
-echo "✅ Réentraînement terminé."
+echo "Starting model retraining..."
+
+# Wait for database
+while ! nc -z db 3306; do
+  sleep 1
+done
+
+# Run training script
+python /app/train_model.py
+
+echo "✅ Retraining completed."

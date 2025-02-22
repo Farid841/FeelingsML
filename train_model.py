@@ -9,6 +9,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, classification_report
+from app.evaluate_model import evaluate_model
+from app.save_evaluation import save_evaluation_report
 
 # Création des dossiers pour stocker les modèles et matrices de confusion
 os.makedirs("models", exist_ok=True)
@@ -75,9 +77,8 @@ def preprocess_data(df):
     return X, y_pos, y_neg, vectorizer
 
 # 📈 Entraînement du modèle en batchs
-def train_and_evaluate(X, y, label_name):
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
+def train_model(X_train, X_test, y_train, y_test, label_type):
+    """Train model and evaluate performance"""
     model = LogisticRegression(solver='saga', max_iter=100, warm_start=True, n_jobs=1)
     model.fit(X_train, y_train)
 
@@ -88,15 +89,25 @@ def train_and_evaluate(X, y, label_name):
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
     plt.xlabel('Prédit')
     plt.ylabel('Réel')
-    plt.title(f'Matrice de confusion - {label_name}')
-    filename_cm = f'outputs/confusion_matrix_{label_name}_{datetime.datetime.now().strftime("%Y%m%d")}.png'
+    plt.title(f'Matrice de confusion - {label_type}')
+    filename_cm = f'outputs/confusion_matrix_{label_type}_{datetime.datetime.now().strftime("%Y%m%d")}.png'
     plt.savefig(filename_cm)
     print(f"📊 Matrice de confusion sauvegardée : {filename_cm}")
 
-    print(f"\n📋 Performance pour {label_name} :\n")
+    print(f"\n📋 Performance pour {label_type} :\n")
     print(classification_report(y_test, y_pred))
 
-    return model
+    # Add evaluation after training
+    print(f"\nEvaluating {label_type} model...")
+    report = evaluate_model(model, X_test, y_test, label_type)
+    print(f"\n{label_type} Model Performance:")
+    print(report)
+    
+    # Save evaluation report
+    report_path = save_evaluation_report(y_test, y_pred, label_type)
+    print(f"\nEvaluation report saved to: {report_path}")
+    
+    return model, vectorizer
 
 # 💾 Sauvegarde du modèle
 def save_model(model, vectorizer, label_name):
@@ -108,27 +119,45 @@ def save_model(model, vectorizer, label_name):
 
     print(f"💾 Modèle sauvegardé : {filename}")
 
+def train_and_evaluate():
+    # 📥 Charger les données depuis la base MySQL
+    df = get_data_from_db()
+    
+    # 🛑 Vérifier si des données ont été récupérées
+    if df is None or df.empty:
+        print("⚠ Aucune donnée disponible. Arrêt du processus.")
+        return 
+
+    X, y_positive, y_negative, vectorizer = preprocess_data(df)
+    
+    #  Séparation des données en ensembles d'entraînement et de test
+    X_train, X_test, y_pos_train, y_pos_test = train_test_split(X, y_positive, test_size=0.2, random_state=42)
+    X_train, X_test, y_neg_train, y_neg_test = train_test_split(X, y_negative, test_size=0.2, random_state=42)
+    
+    # 🚀 Entraînement des modèles
+    pos_model = train_model(X_train, X_test, y_pos_train, y_pos_test, "positive")
+    neg_model = train_model(X_train, X_test, y_neg_train, y_neg_test, "negative")
+    
+    # 💾 Sauvegarde des modèles
+    save_model(pos_model, vectorizer, "positive")
+    save_model(neg_model, vectorizer, "negative")
+
+    # 📝 Évaluation des modèles
+    pos_report = evaluate_model(pos_model, X_test, y_pos_test, "Positive")
+    neg_report = evaluate_model(neg_model, X_test, y_neg_test, "Negative")
+    
+    print("\n📊 Positive Sentiment Model Report:")
+    print(pos_report)
+    print("\n📊 Negative Sentiment Model Report:")
+    print(neg_report)
+
 if __name__ == "__main__":
-    print("🚀 Début du réentraînement du modèle...")
-
-    while True:
-        df = get_data_from_db()
-
-        if df is None:
-            print("✅ Tous les tweets ont été traités. Fin du script.")
-            break
-
-        print("🔄 Prétraitement des données...")
-        X, y_pos, y_neg, vectorizer = preprocess_data(df)
-
-        print("📈 Entraînement du modèle pour les tweets positifs...")
-        model_pos = train_and_evaluate(X, y_pos, "positive")
-
-        print("📉 Entraînement du modèle pour les tweets négatifs...")
-        model_neg = train_and_evaluate(X, y_neg, "negative")
-
-        print("💾 Sauvegarde des modèles...")
-        save_model(model_pos, vectorizer, "positive")
-        save_model(model_neg, vectorizer, "negative")
-
-    print("✅ Réentraînement terminé avec succès !")
+    train_and_evaluate()
+    
+    # Génération du rapport uniquement si des données ont été traitées
+    from app.generate_report import generate_full_report
+    try:
+        generate_full_report(pos_model, X_test, y_pos_test, "Positive")
+        generate_full_report(neg_model, X_test, y_neg_test, "Negative")
+    except NameError:
+        print("⚠ Aucun modèle généré, le rapport ne sera pas créé.")
