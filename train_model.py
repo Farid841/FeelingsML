@@ -120,34 +120,44 @@ def save_model(model, vectorizer, label_name):
     print(f"💾 Modèle sauvegardé : {filename}")
 
 def train_and_evaluate():
-    # Load data
-    X, y_positive, y_negative = load_data_from_mysql()
+    # 📥 Charger les données depuis la base MySQL
+    df = get_data_from_db()
     
-    # Split data
-    X_train, X_test, y_pos_train, y_pos_test = train_test_split(
-        X, y_positive, test_size=0.2, random_state=42
-    )
-    X_train, X_test, y_neg_train, y_neg_test = train_test_split(
-        X, y_negative, test_size=0.2, random_state=42
-    )
+    # 🛑 Vérifier si des données ont été récupérées
+    if df is None or df.empty:
+        print("⚠ Aucune donnée disponible. Arrêt du processus.")
+        return 
+
+    X, y_positive, y_negative, vectorizer = preprocess_data(df)
     
-    # Train models
-    pos_model = train_model(X_train, y_pos_train, "positive")
-    neg_model = train_model(X_train, y_neg_train, "negative")
+    #  Séparation des données en ensembles d'entraînement et de test
+    X_train, X_test, y_pos_train, y_pos_test = train_test_split(X, y_positive, test_size=0.2, random_state=42)
+    X_train, X_test, y_neg_train, y_neg_test = train_test_split(X, y_negative, test_size=0.2, random_state=42)
     
-    # Evaluate models
+    # 🚀 Entraînement des modèles
+    pos_model = train_model(X_train, X_test, y_pos_train, y_pos_test, "positive")
+    neg_model = train_model(X_train, X_test, y_neg_train, y_neg_test, "negative")
+    
+    # 💾 Sauvegarde des modèles
+    save_model(pos_model, vectorizer, "positive")
+    save_model(neg_model, vectorizer, "negative")
+
+    # 📝 Évaluation des modèles
     pos_report = evaluate_model(pos_model, X_test, y_pos_test, "Positive")
     neg_report = evaluate_model(neg_model, X_test, y_neg_test, "Negative")
     
-    print("\nPositive Sentiment Model Report:")
+    print("\n📊 Positive Sentiment Model Report:")
     print(pos_report)
-    print("\nNegative Sentiment Model Report:")
+    print("\n📊 Negative Sentiment Model Report:")
     print(neg_report)
 
 if __name__ == "__main__":
-    # Train models
-    train_models()
+    train_and_evaluate()
     
-    # Generate evaluation reports
+    # Génération du rapport uniquement si des données ont été traitées
     from app.generate_report import generate_full_report
-    generate_full_report()
+    try:
+        generate_full_report(pos_model, X_test, y_pos_test, "Positive")
+        generate_full_report(neg_model, X_test, y_neg_test, "Negative")
+    except NameError:
+        print("⚠ Aucun modèle généré, le rapport ne sera pas créé.")
